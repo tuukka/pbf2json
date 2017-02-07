@@ -185,9 +185,9 @@ type jsonNode struct {
 }
 
 func onNode(node *osmpbf.Node) {
-	marshall := jsonNode{node.ID, "node", node.Lat, node.Lon, node.Tags}
-	json, _ := json.Marshal(marshall)
-	fmt.Println(string(json))
+//	marshall := jsonNode{node.ID, "node", node.Lat, node.Lon, node.Tags}
+//	json, _ := json.Marshal(marshall)
+//	fmt.Println(string(json))
 }
 
 type jsonWay struct {
@@ -200,21 +200,21 @@ type jsonWay struct {
 }
 
 func onWay(way *osmpbf.Way, latlons []map[string]string, centroid map[string]string) {
-	marshall := jsonWay{way.ID, "way", way.Tags /*, way.NodeIDs*/, centroid, latlons}
-	json, _ := json.Marshal(marshall)
-	fmt.Println(string(json))
+//	marshall := jsonWay{way.ID, "way", way.Tags /*, way.NodeIDs*/, centroid, latlons}
+//	json, _ := json.Marshal(marshall)
+//	fmt.Println(string(json))
 }
 
 type JsonRelation struct {
 	ID        int64             `json:"id"`
 	Type      string            `json:"type"`
 	Tags      map[string]string `json:"tags"`
+	Centroid  map[string]string `json:"centroid"`
 	Members   []osmpbf.Member   `json:"members"`
-	Timestamp time.Time         `json:"timestamp"`
 }
 
 func onRelation(rel *osmpbf.Relation){
-	marshall := JsonRelation{ rel.ID, "relation", rel.Tags, rel.Members, rel.Timestamp }
+	marshall := JsonRelation{ rel.ID, "relation", rel.Tags, make(map[string]string), rel.Members}
 	json, _ := json.Marshal(marshall)
 	fmt.Println(string(json))
 }
