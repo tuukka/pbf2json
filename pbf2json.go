@@ -137,20 +137,39 @@ func run(d *osmpbf.Decoder, db *leveldb.DB, config settings) {
 				}
 
 				v.Tags = trimTags(v.Tags)
-				if containsValidTags(v.Tags, config.Tags) {
+				if containsValidTags(v.Tags, config.Tags) || v.Tags["building"] != "" {
 
 					// lookup from leveldb
-					latlons, err := cacheLookup(db, v)
+					nodes, err := cacheLookup(db, v)
+
+					// get latlons of nodes
+					latlons := make([]map[string]string, len(nodes))
+					for i, node := range nodes {
+						latlons[i] = map[string]string {"lat": strconv.FormatFloat(node.Lat, 'f', 6, 64), "lon": strconv.FormatFloat(node.Lon, 'f', 6, 64)}
+					}
 
 					// skip ways which fail to denormalize
 					if err != nil {
 						break
 					}
 
+// järjestä nodet entrance-tyypin perusteella. jos paras on entrance, käytä sen koordinaatteja.
 					// compute centroid
 					var centroid = computeCentroid(latlons)
+					if containsValidTags(v.Tags, config.Tags) {
+						onWay(v, latlons, centroid)
+					}
+					if v.Tags["building"] != "" {
+						for _, node := range nodes {
+							if node.Tags["entrance"] != "" {
 
-					onWay(v, latlons, centroid)
+								for k, v := range v.Tags {
+									if node.Tags[k] == "" { node.Tags[k] = v }
+								}
+								onNode(&node)
+							}
+						}
+					}
 				}
 
 			case *osmpbf.Relation:
@@ -162,7 +181,7 @@ func run(d *osmpbf.Decoder, db *leveldb.DB, config settings) {
 
 				v.Tags = trimTags(v.Tags)
 				if containsValidTags( v.Tags, config.Tags ) {
-					onRelation(v)
+//					onRelation(v)
 				}
 
 			default:
@@ -173,7 +192,7 @@ func run(d *osmpbf.Decoder, db *leveldb.DB, config settings) {
 		}
 	}
 
-	fmt.Printf("Nodes: %d, Ways: %d, Relations: %d\n", nc, wc, rc)
+//	fmt.Printf("Nodes: %d, Ways: %d, Relations: %d\n", nc, wc, rc)
 }
 
 type jsonNode struct {
@@ -185,9 +204,9 @@ type jsonNode struct {
 }
 
 func onNode(node *osmpbf.Node) {
-//	marshall := jsonNode{node.ID, "node", node.Lat, node.Lon, node.Tags}
-//	json, _ := json.Marshal(marshall)
-//	fmt.Println(string(json))
+	marshall := jsonNode{node.ID, "node", node.Lat, node.Lon, node.Tags}
+	json, _ := json.Marshal(marshall)
+	fmt.Println(string(json))
 }
 
 type jsonWay struct {
@@ -200,9 +219,9 @@ type jsonWay struct {
 }
 
 func onWay(way *osmpbf.Way, latlons []map[string]string, centroid map[string]string) {
-//	marshall := jsonWay{way.ID, "way", way.Tags /*, way.NodeIDs*/, centroid, latlons}
-//	json, _ := json.Marshal(marshall)
-//	fmt.Println(string(json))
+	marshall := jsonWay{way.ID, "way", way.Tags /*, way.NodeIDs*/, centroid, latlons}
+	json, _ := json.Marshal(marshall)
+	fmt.Println(string(json))
 }
 
 type JsonRelation struct {
@@ -243,9 +262,9 @@ func cacheFlush(db *leveldb.DB, batch *leveldb.Batch) {
 	batch.Reset()
 }
 
-func cacheLookup(db *leveldb.DB, way *osmpbf.Way) ([]map[string]string, error) {
+func cacheLookup(db *leveldb.DB, way *osmpbf.Way) ([]osmpbf.Node, error) {
 
-	var container []map[string]string
+	var container []osmpbf.Node
 
 	for _, each := range way.NodeIDs {
 		stringid := strconv.FormatInt(each, 10)
@@ -255,7 +274,7 @@ func cacheLookup(db *leveldb.DB, way *osmpbf.Way) ([]map[string]string, error) {
 			log.Println("denormalize failed for way:", way.ID, "node not found:", stringid)
 			return container, err
 		}
-
+/*
 		s := string(data)
 		spl := strings.Split(s, ":")
 
@@ -263,7 +282,10 @@ func cacheLookup(db *leveldb.DB, way *osmpbf.Way) ([]map[string]string, error) {
 		lat, lon := spl[0], spl[1]
 		latlon["lat"] = lat
 		latlon["lon"] = lon
-
+		latlon["entrance"] = spl[2]
+*/
+		var latlon osmpbf.Node
+		json.Unmarshal(data, &latlon)
 		container = append(container, latlon)
 
 	}
@@ -276,13 +298,17 @@ func cacheLookup(db *leveldb.DB, way *osmpbf.Way) ([]map[string]string, error) {
 }
 
 func formatLevelDB(node *osmpbf.Node) (id string, val []byte) {
-
 	stringid := strconv.FormatInt(node.ID, 10)
+	marshall := jsonNode{node.ID, "node", node.Lat, node.Lon, node.Tags}
+	json, _ := json.Marshal(marshall)
+	return stringid, []byte(json)
 
 	var bufval bytes.Buffer
 	bufval.WriteString(strconv.FormatFloat(node.Lat, 'f', 6, 64))
 	bufval.WriteString(":")
 	bufval.WriteString(strconv.FormatFloat(node.Lon, 'f', 6, 64))
+	bufval.WriteString(":")
+	bufval.WriteString(node.Tags["entrance"])
 	byteval := []byte(bufval.String())
 
 	return stringid, byteval
